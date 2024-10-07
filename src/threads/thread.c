@@ -28,6 +28,13 @@ static struct list ready_list;
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
 
+/*List to keep track sleeping threads*/
+static struct list sleeping_thread_list;
+
+static bool time_comparator(const struct list_elem *a,
+                             const struct list_elem *b,
+                             void *aux UNUSED);
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -61,6 +68,7 @@ bool thread_mlfqs;
 
 static void kernel_thread (thread_func *, void *aux);
 
+
 static void idle (void *aux UNUSED);
 static struct thread *running_thread (void);
 static struct thread *next_thread_to_run (void);
@@ -70,6 +78,45 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
+
+
+bool time_comparator(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+  struct thread *a_thread = list_entry(a, struct thread, elem);
+  struct thread *b_thread = list_entry(b, struct thread, elem);
+
+  
+  return a_thread->wake_up_time < b_thread->wake_up_time;
+
+}
+
+void wake_up_threads(int64_t ticks) {
+      
+  
+    while (!list_empty(&sleeping_thread_list)) {
+
+
+      struct list_elem *e  = list_pop_front (&sleeping_thread_list);
+      struct thread *t = list_entry(e, struct thread, elem);
+
+      if (t->wake_up_time <= ticks) {
+        //printf("Woken up with thread %s \n", t->name);
+        thread_unblock(t);
+      
+      
+      } else  {
+        //printf("Waking Stop \n");
+        list_push_front(&sleeping_thread_list, e);
+        break;
+      }
+    }
+  }
+
+void insert_list_helper(struct list_elem * e) {
+     list_insert_ordered(&sleeping_thread_list, e, &time_comparator, NULL);
+}
+
+
+
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -92,6 +139,8 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  list_init (&sleeping_thread_list);
+
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -134,7 +183,6 @@ void
 thread_tick (void) 
 {
   struct thread *t = thread_current ();
-
   /* Update statistics. */
   if (t == idle_thread)
     idle_ticks++;
@@ -482,7 +530,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
-
+  
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
@@ -574,7 +622,7 @@ schedule (void)
   struct thread *cur = running_thread ();
   struct thread *next = next_thread_to_run ();
   struct thread *prev = NULL;
-
+  
   ASSERT (intr_get_level () == INTR_OFF);
   ASSERT (cur->status != THREAD_RUNNING);
   ASSERT (is_thread (next));
