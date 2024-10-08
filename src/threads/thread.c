@@ -29,7 +29,7 @@ static struct list ready_list;
 static struct list all_list;
 
 /*List to keep track sleeping threads*/
-static struct list sleeping_thread_list;
+static struct list sleeping_list;
 
 static bool time_comparator(const struct list_elem *a,
                              const struct list_elem *b,
@@ -81,8 +81,8 @@ static tid_t allocate_tid (void);
 
 
 bool time_comparator(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
-  struct thread *a_thread = list_entry(a, struct thread, elem);
-  struct thread *b_thread = list_entry(b, struct thread, elem);
+  struct thread *a_thread = list_entry(a, struct thread, sleep_elem);
+  struct thread *b_thread = list_entry(b, struct thread, sleep_elem);
 
   
   return a_thread->wake_up_time < b_thread->wake_up_time;
@@ -92,27 +92,24 @@ bool time_comparator(const struct list_elem *a, const struct list_elem *b, void 
 void wake_up_threads(int64_t ticks) {
       
   
-    while (!list_empty(&sleeping_thread_list)) {
+    while (!list_empty(&sleeping_list)) {
 
-
-      struct list_elem *e  = list_pop_front (&sleeping_thread_list);
-      struct thread *t = list_entry(e, struct thread, elem);
+      struct list_elem *e  = list_pop_front (&sleeping_list);
+      struct thread *t = list_entry(e, struct thread, sleep_elem);
 
       if (t->wake_up_time <= ticks) {
-        //printf("Woken up with thread %s \n", t->name);
-        thread_unblock(t);
-      
-      
+        sema_up(&t->sleep_sema);
+
       } else  {
-        //printf("Waking Stop \n");
-        list_push_front(&sleeping_thread_list, e);
+        
+        list_push_front(&sleeping_list, e);
         break;
       }
     }
   }
 
 void insert_list_helper(struct list_elem * e) {
-     list_insert_ordered(&sleeping_thread_list, e, &time_comparator, NULL);
+     list_insert_ordered(&sleeping_list, e, &time_comparator, NULL);
 }
 
 
@@ -139,7 +136,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
-  list_init (&sleeping_thread_list);
+  list_init (&sleeping_list);
 
 
   /* Set up a thread structure for the running thread. */

@@ -93,19 +93,22 @@ void
 timer_sleep (int64_t ticks) 
 
 {
-  enum intr_level old_level = intr_disable();
-
+  struct thread *cur = thread_current();
   int64_t start = timer_ticks ();
 
-  struct thread *cur = thread_current();
-
+  //change wake up time and initilise semaphore so its blocked
   cur->wake_up_time = start + ticks;
+  sema_init(&cur->sleep_sema, 0);
 
-  insert_list_helper(&cur->elem);
-
-  thread_block();
+  //list is initialised as static in thread.c so I used a helper to instert it in an ordered fashion
+  enum intr_level old_level = intr_disable();
+  
+  insert_list_helper(&cur->sleep_elem);
   
   intr_set_level(old_level);
+
+  //if interrupted and sema_up intended behaviour doesn't change
+  sema_down(&cur->sleep_sema);
 
 }
 
